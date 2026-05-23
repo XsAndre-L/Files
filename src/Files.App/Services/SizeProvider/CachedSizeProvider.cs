@@ -1,4 +1,4 @@
-﻿// Copyright (c) Files Community
+// Copyright (c) Files Community
 // Licensed under the MIT License.
 
 using System.Collections.Concurrent;
@@ -9,6 +9,8 @@ namespace Files.App.Services.SizeProvider
 	public sealed partial class CachedSizeProvider : ISizeProvider
 	{
 		private readonly ConcurrentDictionary<string, ulong> sizes = new();
+
+		private readonly SemaphoreSlim _walkSemaphore = new(1, 1);
 
 		public event EventHandler<SizeChangedEventArgs>? SizeChanged;
 
@@ -33,13 +35,29 @@ namespace Files.App.Services.SizeProvider
 			}
 
 			var stopwatch = Stopwatch.StartNew();
-			ulong size = await Calculate(path);
+
+			await _walkSemaphore.WaitAsync(cancellationToken);
+			ulong size;
+			try
+			{
+				size = await Calculate(path);
+			}
+			finally
+			{
+				_walkSemaphore.Release();
+			}
 
 			sizes[path] = size;
 			RaiseSizeChanged(path, size, SizeChangedValueState.Final);
 
 			async Task<ulong> Calculate(string path, int level = 0)
 			{
+				if (cancellationToken.IsCancellationRequested)
+					return 0;
+
+				if (level > 10)
+					return 0;
+
 				if (string.IsNullOrEmpty(path))
 				{
 					return 0;

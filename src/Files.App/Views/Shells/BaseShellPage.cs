@@ -25,6 +25,8 @@ namespace Files.App.Views.Shells
 
 		private CancellationTokenSource _gitFetchToken = new CancellationTokenSource();
 
+		private readonly Dictionary<string, DateTimeOffset> _lastGitFetchTime = [];
+
 		public static readonly DependencyProperty NavParamsProperty =
 			DependencyProperty.Register(
 				"NavParams",
@@ -195,7 +197,7 @@ namespace Files.App.Views.Shells
 			GitHelpers.GitFetchCompleted += FilesystemViewModel_GitDirectoryUpdated;
 
 			_updateDateDisplayTimer = DispatcherQueue.CreateTimer();
-			_updateDateDisplayTimer.Interval = TimeSpan.FromSeconds(1);
+			_updateDateDisplayTimer.Interval = TimeSpan.FromSeconds(30);
 			_updateDateDisplayTimer.Tick += UpdateDateDisplayTimer_Tick;
 			_lastDateTimeFormats = userSettingsService.GeneralSettingsService.DateTimeFormat;
 			_updateDateDisplayTimer.Start();
@@ -247,9 +249,15 @@ namespace Files.App.Views.Shells
 				}
 				if (InstanceViewModel.IsGitRepository && (!GitHelpers.IsExecutingGitAction || isGitFetchCanceled))
 				{
-					_gitFetch = Task.Run(
-						() => GitHelpers.FetchOrigin(InstanceViewModel.GitRepositoryPath, _gitFetchToken.Token),
-						_gitFetchToken.Token);
+					var repoPath = InstanceViewModel.GitRepositoryPath;
+					var now = DateTimeOffset.UtcNow;
+					if (!_lastGitFetchTime.TryGetValue(repoPath, out var lastFetch) || (now - lastFetch).TotalMinutes >= 5)
+					{
+						_lastGitFetchTime[repoPath] = now;
+						_gitFetch = Task.Run(
+							() => GitHelpers.FetchOrigin(repoPath, _gitFetchToken.Token),
+							_gitFetchToken.Token);
+					}
 				}
 			}
 

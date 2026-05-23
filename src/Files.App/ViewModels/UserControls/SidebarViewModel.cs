@@ -421,6 +421,7 @@ namespace Files.App.ViewModels.UserControls
 				}
 			}
 
+			section.PropertyChanged -= Section_PropertyChanged;
 			section.PropertyChanged += Section_PropertyChanged;
 		}
 
@@ -707,6 +708,9 @@ namespace Files.App.ViewModels.UserControls
 			NetworkService.Computers.CollectionChanged -= Manager_DataChangedForNetworkComputers;
 			WSLDistroManager.DataChanged -= Manager_DataChanged;
 			App.FileTagsManager.DataChanged -= Manager_DataChanged;
+
+			foreach (var section in sidebarItems.OfType<LocationItem>())
+				section.PropertyChanged -= Section_PropertyChanged;
 
 			dispatcherQueue = null;
 		}

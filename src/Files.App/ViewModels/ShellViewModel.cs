@@ -47,6 +47,8 @@ namespace Files.App.ViewModels
 
 		private Task? aProcessQueueAction;
 		private Task? gitProcessQueueAction;
+		private CancellationTokenSource? _dirChangedDebounceCts;
+		private Windows.Foundation.IAsyncAction? _gitWatcherAction;
 
 		// Files and folders list for manipulating
 		private ConcurrentCollection<ListedItem> filesAndFolders;
@@ -572,7 +574,7 @@ namespace Files.App.ViewModels
 			enumFolderSemaphore = new SemaphoreSlim(1, 1);
 			getFileOrFolderSemaphore = new SemaphoreSlim(50);
 			bulkOperationSemaphore = new SemaphoreSlim(1, 1);
-			loadThumbnailSemaphore = new SemaphoreSlim(1, 1);
+			loadThumbnailSemaphore = new SemaphoreSlim(4, 4);
 			dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
 			UserSettingsService.OnSettingChangedEvent += UserSettingsService_OnSettingChangedEvent;
@@ -2200,6 +2202,8 @@ namespace Files.App.ViewModels
 			// NOTE: Suppressed NullReferenceException caused by EnableRaisingEvents
 			SafetyExtensions.IgnoreExceptions(() =>
 			{
+				watcher?.Dispose();
+				watcher = null;
 				watcher = new FileSystemWatcher
 				{
 					Path = folderPath,
@@ -2214,14 +2218,18 @@ namespace Files.App.ViewModels
 			}, App.Logger);
 		}
 
-		private async void DirectoryWatcher_Changed(object sender, FileSystemEventArgs e)
+		private void DirectoryWatcher_Changed(object sender, FileSystemEventArgs e)
 		{
 			Debug.WriteLine($"Directory watcher event: {e.ChangeType}, {e.FullPath}");
 
-			await dispatcherQueue.EnqueueOrInvokeAsync(() =>
-			{
-				RefreshItems(null);
-			});
+			// Debounce rapid file-system events to avoid continuous full re-enumeration
+			_dirChangedDebounceCts?.Cancel();
+			_dirChangedDebounceCts = new CancellationTokenSource();
+			var debounceCts = _dirChangedDebounceCts;
+			_ = Task.Delay(500, debounceCts.Token)
+				.ContinueWith(_ => RefreshItems(null), debounceCts.Token,
+					TaskContinuationOptions.OnlyOnRanToCompletion,
+					TaskScheduler.Default);
 		}
 
 		private async void ItemQueryResult_ContentsChanged(IStorageQueryResultBase sender, object args)
@@ -2371,7 +2379,7 @@ namespace Files.App.ViewModels
 			gitProcessQueueAction ??= Task.Factory.StartNew(() => ProcessGitChangesQueueAsync(watcherCTS.Token), default,
 				TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-			var gitWatcherAction = Windows.System.Threading.ThreadPool.RunAsync((x) =>
+			_gitWatcherAction ??= Windows.System.Threading.ThreadPool.RunAsync((x) =>
 			{
 				var buff = new byte[4096];
 				var rand = Guid.NewGuid();
@@ -2392,7 +2400,7 @@ namespace Files.App.ViewModels
 								break;
 
 							ReadDirectoryChangesW(hWatchDir, pBuff,
-								4096, true,
+								4096, false,
 								notifyFilters, null,
 								ref overlapped, null);
 
@@ -2429,12 +2437,12 @@ namespace Files.App.ViewModels
 
 			watcherCTS.Token.Register(() =>
 			{
-				if (gitWatcherAction is not null)
+				if (_gitWatcherAction is not null)
 				{
-					gitWatcherAction?.Cancel();
+					_gitWatcherAction?.Cancel();
 
 					// Prevent duplicate execution of this block
-					gitWatcherAction = null;
+					_gitWatcherAction = null;
 				}
 
 				CancelIoEx(hWatchDir, IntPtr.Zero);
