@@ -409,3 +409,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea/
 src/Files.App/Assets/FilesOpenDialog/Files.App.Launcher.exe.sha256
+
+# Build artifacts
+AppPackages*/
+*.msixbundle
+*.msix
+*.appxbundle

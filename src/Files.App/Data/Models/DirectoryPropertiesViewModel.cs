@@ -1,14 +1,17 @@
 // Copyright (c) Files Community
 // Licensed under the MIT License.
 
+using System;
 using System.Windows.Input;
 
 namespace Files.App.ViewModels.UserControls
 {
-	public sealed partial class StatusBarViewModel : ObservableObject
+	public sealed partial class StatusBarViewModel : ObservableObject, IDisposable
 	{
 		private IContentPageContext ContentPageContext { get; } = Ioc.Default.GetRequiredService<IContentPageContext>();
 		private IDevToolsSettingsService DevToolsSettingsService = Ioc.Default.GetRequiredService<IDevToolsSettingsService>();
+
+		private readonly PropertyChangedEventHandler devToolsSettingsService_PropertyChanged;
 
 		// The first branch will always be the active one.
 		public const int ACTIVE_BRANCH_INDEX = 0;
@@ -103,7 +106,7 @@ namespace Files.App.ViewModels.UserControls
 			NewBranchCommand = new AsyncRelayCommand(()
 				=> GitHelpers.CreateNewBranchAsync(_gitRepositoryPath!, _localBranches[ACTIVE_BRANCH_INDEX].Name));
 
-			DevToolsSettingsService.PropertyChanged += (s, e) =>
+			devToolsSettingsService_PropertyChanged = (s, e) =>
 			{
 				switch (e.PropertyName)
 				{
@@ -112,6 +115,12 @@ namespace Files.App.ViewModels.UserControls
 						break;
 				}
 			};
+			DevToolsSettingsService.PropertyChanged += devToolsSettingsService_PropertyChanged;
+		}
+
+		public void Dispose()
+		{
+			DevToolsSettingsService.PropertyChanged -= devToolsSettingsService_PropertyChanged;
 		}
 
 		public void UpdateGitInfo(bool isGitRepository, string? repositoryPath, BranchItem? head)

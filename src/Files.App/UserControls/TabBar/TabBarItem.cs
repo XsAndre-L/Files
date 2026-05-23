@@ -13,6 +13,8 @@ namespace Files.App.UserControls.TabBar
 	{
 		public Frame ContentFrame { get; private set; }
 
+		private ITabBarItemContent? _subscribedContent;
+
 		public event EventHandler<TabBarItemParameter> ContentChanged;
 
 		private IconSource _IconSource;
@@ -94,8 +96,17 @@ namespace Files.App.UserControls.TabBar
 
 		private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
 		{
+			if (_subscribedContent is not null)
+			{
+				_subscribedContent.ContentChanged -= TabItemContent_ContentChanged;
+				_subscribedContent = null;
+			}
+
 			if (TabItemContent is not null)
-				TabItemContent.ContentChanged += TabItemContent_ContentChanged;
+			{
+				_subscribedContent = TabItemContent;
+				_subscribedContent.ContentChanged += TabItemContent_ContentChanged;
+			}
 		}
 
 		private void TabItemContent_ContentChanged(object? sender, TabBarItemParameter e)
@@ -106,6 +117,12 @@ namespace Files.App.UserControls.TabBar
 
 		public void Dispose()
 		{
+			if (_subscribedContent is not null)
+			{
+				_subscribedContent.ContentChanged -= TabItemContent_ContentChanged;
+				_subscribedContent = null;
+			}
+
 			if (TabItemContent is IDisposable disposableContent)
 				disposableContent?.Dispose();
 

@@ -1443,6 +1443,7 @@ namespace Files.App.Views.Layouts
 		public virtual void Dispose()
 		{
 			UnhookBaseEvents();
+			StatusBarViewModel?.Dispose();
 		}
 
 		protected void ItemsLayout_DragOver(object sender, DragEventArgs e)

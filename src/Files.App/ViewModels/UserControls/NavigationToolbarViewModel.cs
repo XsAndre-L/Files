@@ -36,6 +36,13 @@ namespace Files.App.ViewModels.UserControls
 		private readonly IContentPageContext ContentPageContext = Ioc.Default.GetRequiredService<IContentPageContext>();
 		private readonly StatusCenterViewModel OngoingTasksViewModel = Ioc.Default.GetRequiredService<StatusCenterViewModel>();
 
+		private readonly PropertyChangedEventHandler decompressArchive_PropertyChanged;
+		private readonly PropertyChangedEventHandler decompressArchiveHere_PropertyChanged;
+		private readonly PropertyChangedEventHandler decompressArchiveHereSmart_PropertyChanged;
+		private readonly PropertyChangedEventHandler decompressArchiveToChildFolder_PropertyChanged;
+		private readonly PropertyChangedEventHandler appearanceSettingsService_PropertyChanged;
+		private readonly PropertyChangedEventHandler ongoingTasksViewModel_PropertyChanged;
+
 		// Fields
 
 		private readonly DispatcherQueue _dispatcherQueue;
@@ -290,31 +297,35 @@ namespace Files.App.ViewModels.UserControls
 			UserSettingsService.OnSettingChangedEvent += UserSettingsService_OnSettingChangedEvent;
 			UpdateService.PropertyChanged += UpdateService_OnPropertyChanged;
 
-			Commands.DecompressArchive.PropertyChanged += (s, e) =>
+			decompressArchive_PropertyChanged = (s, e) =>
 			{
 				if (e.PropertyName is nameof(Commands.DecompressArchive.IsExecutable))
 					OnPropertyChanged(nameof(CanExtract));
 			};
+			Commands.DecompressArchive.PropertyChanged += decompressArchive_PropertyChanged;
 
-			Commands.DecompressArchiveHere.PropertyChanged += (s, e) =>
+			decompressArchiveHere_PropertyChanged = (s, e) =>
 			{
 				if (e.PropertyName is nameof(Commands.DecompressArchiveHere.IsExecutable))
 					OnPropertyChanged(nameof(CanExtract));
 			};
+			Commands.DecompressArchiveHere.PropertyChanged += decompressArchiveHere_PropertyChanged;
 
-			Commands.DecompressArchiveHereSmart.PropertyChanged += (s, e) =>
+			decompressArchiveHereSmart_PropertyChanged = (s, e) =>
 			{
 				if (e.PropertyName is nameof(Commands.DecompressArchiveHereSmart.IsExecutable))
 					OnPropertyChanged(nameof(CanExtract));
 			};
+			Commands.DecompressArchiveHereSmart.PropertyChanged += decompressArchiveHereSmart_PropertyChanged;
 
-			Commands.DecompressArchiveHereSmart.PropertyChanged += (s, e) =>
+			decompressArchiveToChildFolder_PropertyChanged = (s, e) =>
 			{
 				if (e.PropertyName is nameof(Commands.DecompressArchiveToChildFolder.IsExecutable))
 					OnPropertyChanged(nameof(CanExtract));
 			};
+			Commands.DecompressArchiveToChildFolder.PropertyChanged += decompressArchiveToChildFolder_PropertyChanged;
 
-			AppearanceSettingsService.PropertyChanged += (s, e) =>
+			appearanceSettingsService_PropertyChanged = (s, e) =>
 			{
 				switch (e.PropertyName)
 				{
@@ -326,7 +337,9 @@ namespace Files.App.ViewModels.UserControls
 						break;
 				}
 			};
-			OngoingTasksViewModel.PropertyChanged += (s, e) =>
+			AppearanceSettingsService.PropertyChanged += appearanceSettingsService_PropertyChanged;
+
+			ongoingTasksViewModel_PropertyChanged = (s, e) =>
 			{
 				switch (e.PropertyName)
 				{
@@ -335,6 +348,7 @@ namespace Files.App.ViewModels.UserControls
 						break;
 				}
 			};
+			OngoingTasksViewModel.PropertyChanged += ongoingTasksViewModel_PropertyChanged;
 		}
 
 		// Methods
@@ -1237,6 +1251,13 @@ namespace Files.App.ViewModels.UserControls
 		public void Dispose()
 		{
 			UserSettingsService.OnSettingChangedEvent -= UserSettingsService_OnSettingChangedEvent;
+			UpdateService.PropertyChanged -= UpdateService_OnPropertyChanged;
+			Commands.DecompressArchive.PropertyChanged -= decompressArchive_PropertyChanged;
+			Commands.DecompressArchiveHere.PropertyChanged -= decompressArchiveHere_PropertyChanged;
+			Commands.DecompressArchiveHereSmart.PropertyChanged -= decompressArchiveHereSmart_PropertyChanged;
+			Commands.DecompressArchiveToChildFolder.PropertyChanged -= decompressArchiveToChildFolder_PropertyChanged;
+			AppearanceSettingsService.PropertyChanged -= appearanceSettingsService_PropertyChanged;
+			OngoingTasksViewModel.PropertyChanged -= ongoingTasksViewModel_PropertyChanged;
 		}
 	}
 }
