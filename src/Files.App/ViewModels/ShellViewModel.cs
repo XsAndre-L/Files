@@ -245,23 +245,20 @@ namespace Files.App.ViewModels
 				pathRoot = Path.GetPathRoot(WorkingDirectory);
 			}
 
-			GitDirectory = GitHelpers.GetGitRepositoryPath(WorkingDirectory, pathRoot);
-			// Set a fast default: if no git directory was found, it's definitely not valid.
-			// Otherwise, check asynchronously in the background so navigation isn't blocked.
-			if (string.IsNullOrEmpty(GitDirectory))
+			// Defer Git directory discovery and head checks to a background thread to prevent synchronous disk I/O from stalling the UI thread during navigation.
+			_ = Task.Run(async () =>
 			{
-				IsValidGitDirectory = false;
-			}
-			else
-			{
-				var gitDir = GitDirectory;
-				_ = Task.Run(async () =>
+				var gitDir = GitHelpers.GetGitRepositoryPath(value, pathRoot);
+				var head = !string.IsNullOrEmpty(gitDir) ? await GitHelpers.GetRepositoryHead(gitDir) : null;
+				await dispatcherQueue.EnqueueOrInvokeAsync(() =>
 				{
-					var head = await GitHelpers.GetRepositoryHead(gitDir);
-					await dispatcherQueue.EnqueueOrInvokeAsync(() =>
-						IsValidGitDirectory = !string.IsNullOrEmpty(head?.Name));
+					if (WorkingDirectory == value)
+					{
+						GitDirectory = gitDir;
+						IsValidGitDirectory = !string.IsNullOrEmpty(head?.Name);
+					}
 				});
-			}
+			});
 
 			_ = UpdateFolderThumbnailImageSource();
 
