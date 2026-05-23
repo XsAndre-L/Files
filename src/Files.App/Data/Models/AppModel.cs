@@ -79,6 +79,13 @@ namespace Files.App.Data.Models
 			}
 		}
 
+		private bool _IsWindowActive = true;
+		public bool IsWindowActive
+		{
+			get => _IsWindowActive;
+			set => SetProperty(ref _IsWindowActive, value);
+		}
+
 		private int _PropertiesWindowCount = 0;
 		public int PropertiesWindowCount
 		{

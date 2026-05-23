@@ -177,9 +177,10 @@ namespace Files.App
 			Logger.LogInformation($"Window_Activated: State={args?.WindowActivationState.ToString()}");
 
 			AppModel.IsMainWindowClosed = false;
+			AppModel.IsWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
 
 			// TODO(s): Is this code still needed?
-			if (args.WindowActivationState != WindowActivationState.CodeActivated ||
+			if (args.WindowActivationState != WindowActivationState.CodeActivated &&
 				args.WindowActivationState != WindowActivationState.PointerActivated)
 				return;
 

@@ -49,6 +49,8 @@ namespace Files.App.ViewModels
 		private Task? gitProcessQueueAction;
 		private CancellationTokenSource? _dirChangedDebounceCts;
 		private Windows.Foundation.IAsyncAction? _gitWatcherAction;
+		private bool _isRefreshPending;
+		private readonly Files.App.Data.Models.AppModel AppModel = Ioc.Default.GetRequiredService<Files.App.Data.Models.AppModel>();
 
 		// Files and folders list for manipulating
 		private ConcurrentCollection<ListedItem> filesAndFolders;
@@ -600,6 +602,7 @@ namespace Files.App.ViewModels
 			StorageTrashBinService.Watcher.ItemAdded += RecycleBinItemCreatedAsync;
 			StorageTrashBinService.Watcher.ItemDeleted += RecycleBinItemDeletedAsync;
 			StorageTrashBinService.Watcher.RefreshRequested += RecycleBinRefreshRequestedAsync;
+			AppModel.PropertyChanged += AppModel_PropertyChanged;
 		}
 
 		private async void LayoutModeChangeRequested(object? sender, LayoutModeEventArgs e)
@@ -2237,12 +2240,28 @@ namespace Files.App.ViewModels
 		{
 			Debug.WriteLine($"Directory watcher event: {e.ChangeType}, {e.FullPath}");
 
+			if (!AppModel.IsWindowActive)
+			{
+				_isRefreshPending = true;
+				return;
+			}
+
 			// Debounce rapid file-system events to avoid continuous full re-enumeration
 			_dirChangedDebounceCts?.Cancel();
 			_dirChangedDebounceCts = new CancellationTokenSource();
 			var debounceCts = _dirChangedDebounceCts;
 			_ = Task.Delay(500, debounceCts.Token)
-				.ContinueWith(_ => RefreshItems(null), debounceCts.Token,
+				.ContinueWith(_ =>
+				{
+					if (AppModel.IsWindowActive)
+					{
+						RefreshItems(null);
+					}
+					else
+					{
+						_isRefreshPending = true;
+					}
+				}, debounceCts.Token,
 					TaskContinuationOptions.OnlyOnRanToCompletion,
 					TaskScheduler.Default);
 		}
@@ -2263,7 +2282,14 @@ namespace Files.App.ViewModels
 
 			await dispatcherQueue.EnqueueOrInvokeAsync(() =>
 			{
-				RefreshItems(null);
+				if (AppModel.IsWindowActive)
+				{
+					RefreshItems(null);
+				}
+				else
+				{
+					_isRefreshPending = true;
+				}
 			});
 		}
 
@@ -2927,6 +2953,19 @@ namespace Files.App.ViewModels
 			fileTagsSettingsService.OnTagsUpdated -= FileTagsSettingsService_OnSettingUpdated;
 			folderSizeProvider.SizeChanged -= FolderSizeProvider_SizeChanged;
 			folderSettings.LayoutModeChangeRequested -= LayoutModeChangeRequested;
+			AppModel.PropertyChanged -= AppModel_PropertyChanged;
+		}
+
+		private void AppModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+		{
+			if (e.PropertyName == nameof(AppModel.IsWindowActive) && AppModel.IsWindowActive)
+			{
+				if (_isRefreshPending)
+				{
+					_isRefreshPending = false;
+					_ = dispatcherQueue.EnqueueOrInvokeAsync(() => RefreshItems(null));
+				}
+			}
 		}
 	}
 
