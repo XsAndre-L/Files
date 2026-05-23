@@ -93,7 +93,7 @@ namespace Files.App.Utils.Storage
 				if (cancellationToken.IsCancellationRequested || count == countLimit)
 					break;
 
-				if (intermediateAction is not null && (count == 32 || sampler.CheckNow()))
+				if (intermediateAction is not null && (count == 10 || sampler.CheckNow()))
 				{
 					await intermediateAction(tempList);
 
