@@ -804,6 +804,13 @@ namespace Files.App.ViewModels.UserControls
 			if (item is not INavigationControlItem navigationControlItem) return;
 			var navigationPath = item as string;
 
+			if (navigationControlItem.Path is not null
+				&& navigationControlItem.ItemType is not NavigationControlItemType.FileTag
+				&& !string.Equals(navigationControlItem.Path, "Settings", StringComparison.OrdinalIgnoreCase))
+			{
+				LayoutPreferencesManager.PreFetchSettingsForPath(navigationControlItem.Path);
+			}
+
 			if (await DriveHelpers.CheckEmptyDrive(navigationPath))
 				return;
 

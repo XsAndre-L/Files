@@ -32,7 +32,7 @@ namespace Files.App
 			MinHeight = 316;
 			MinWidth = 416;
 			ExtendsContentIntoTitleBar = true;
-			Title = "Files";
+			Title = AppLifecycleHelper.AppEnvironment == AppEnvironment.Dev ? "Xplorer" : "Files";
 			PersistenceId = "FilesMainWindow";
 			AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
 			AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;

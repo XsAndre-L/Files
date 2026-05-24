@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using Windows.Win32;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
 
 namespace Files.App.Helpers
 {
@@ -18,6 +20,9 @@ namespace Files.App.Helpers
 
 		private static readonly Lazy<LayoutPreferencesDatabaseManager> _databaseInstance =
 			new(() => new LayoutPreferencesDatabaseManager());
+
+		private static readonly ConcurrentDictionary<string, LayoutPreferencesItem> _preferencesCache =
+			new(StringComparer.OrdinalIgnoreCase);
 
 		private readonly FolderLayoutModes? _rootLayoutMode;
 
@@ -245,9 +250,18 @@ namespace Files.App.Helpers
 
 		public bool IsPathUsingDefaultLayout(string? path)
 		{
-			return UserSettingsService.LayoutSettingsService.SyncFolderPreferencesAcrossDirectories ||
-				string.IsNullOrEmpty(path) ||
-				GetLayoutPreferencesFromDatabase(path, Win32Helper.GetFolderFRN(path)) is null;
+			if (UserSettingsService.LayoutSettingsService.SyncFolderPreferencesAcrossDirectories || string.IsNullOrEmpty(path))
+				return true;
+
+			// Normalize path to match how GetLayoutPreferencesForPath caches keys (HIGH-1 fix)
+			var normalizedPath = path.TrimPath() ?? path;
+
+			if (_preferencesCache.TryGetValue(normalizedPath, out var cachedItem))
+				return new LayoutPreferencesItem().Equals(cachedItem);
+
+			// Path-only DB lookup is sufficient — skip synchronous FRN call on UI thread (HIGH-2 fix)
+			var prefNoFrn = GetLayoutPreferencesFromDatabase(normalizedPath, null);
+			return prefNoFrn is null;
 		}
 
 		public void ToggleLayoutModeColumnView(bool manuallySet)
@@ -310,6 +324,9 @@ namespace Files.App.Helpers
 
 		public void OnDefaultPreferencesChanged(string path, string settingsName)
 		{
+			// Evict stale cache entries when global layout settings change (HIGH-6 fix)
+			_preferencesCache.Clear();
+
 			var preferencesItem = GetLayoutPreferencesForPath(path);
 			if (preferencesItem is null)
 				return;
@@ -375,12 +392,21 @@ namespace Files.App.Helpers
 
 		public static void SetLayoutPreferencesForPath(string path, LayoutPreferencesItem preferencesItem)
 		{
+			// CRITICAL-1 fix: guard null before any operation
+			if (path is null)
+				return;
+
 			if (!UserSettingsService.LayoutSettingsService.SyncFolderPreferencesAcrossDirectories)
 			{
 				var folderFRN = Win32Helper.GetFolderFRN(path);
 				var trimmedFolderPath = path.TrimPath();
 				if (trimmedFolderPath is not null)
 					SetLayoutPreferencesToDatabase(trimmedFolderPath, folderFRN, preferencesItem);
+
+				// CRITICAL-2 fix: only update cache AFTER successful DB write path
+				_preferencesCache[path] = preferencesItem;
+				if (trimmedFolderPath is not null && !string.Equals(trimmedFolderPath, path, StringComparison.OrdinalIgnoreCase))
+					_preferencesCache[trimmedFolderPath] = preferencesItem;
 			}
 			else
 			{
@@ -490,6 +516,9 @@ namespace Files.App.Helpers
 			if (path is null)
 				return null;
 
+			if (_preferencesCache.TryGetValue(path, out var cachedItem))
+				return cachedItem;
+
 			//Recycle Bin does not support Column View due to navigation conflicts with hierarchical display
 			//Fall back to Details View when Column View is configured
 			if (path.StartsWith(Constants.UserEnvironmentPaths.RecycleBinPath, StringComparison.Ordinal))
@@ -498,19 +527,54 @@ namespace Files.App.Helpers
 
 				var recycleBinPreference = SafetyExtensions.IgnoreExceptions(() =>
 				{
+					if (_preferencesCache.TryGetValue(trimmedPath, out var rbCached))
+						return rbCached;
+
+					var rbPref = GetLayoutPreferencesFromDatabase(trimmedPath, null);
+					if (rbPref is not null)
+					{
+						_ = Task.Run(() =>
+						{
+							var folderFRN = Win32Helper.GetFolderFRN(trimmedPath);
+							if (folderFRN is not null)
+							{
+								var fullPref = GetLayoutPreferencesFromDatabase(trimmedPath, folderFRN) ?? GetLayoutPreferencesFromAds(trimmedPath, folderFRN);
+								if (fullPref is not null)
+								{
+									_preferencesCache.TryUpdate(trimmedPath, fullPref, rbPref);
+								}
+								else
+								{
+									SetLayoutPreferencesToDatabase(trimmedPath, folderFRN, rbPref);
+								}
+							}
+						});
+						return rbPref;
+					}
+
 					var folderFRN = Win32Helper.GetFolderFRN(trimmedPath);
 
-					return GetLayoutPreferencesFromDatabase(trimmedPath, folderFRN)
+					var fullRbPref = GetLayoutPreferencesFromDatabase(trimmedPath, folderFRN)
 						?? GetLayoutPreferencesFromAds(trimmedPath, folderFRN);
+
+					if (fullRbPref is not null)
+					{
+						_preferencesCache[trimmedPath] = fullRbPref;
+					}
+					return fullRbPref;
 				}, App.Logger);
 
 				if (recycleBinPreference is not null && recycleBinPreference.LayoutMode != FolderLayoutModes.ColumnView)
+				{
+					_preferencesCache[path] = recycleBinPreference;
 					return recycleBinPreference;
+				}
 
 				var defaultPref = new LayoutPreferencesItem();
 				if (defaultPref.LayoutMode == FolderLayoutModes.ColumnView)
 					defaultPref.LayoutMode = FolderLayoutModes.DetailsView;
 
+				_preferencesCache[path] = defaultPref;
 				return defaultPref;
 			}
 
@@ -518,20 +582,73 @@ namespace Files.App.Helpers
 			{
 				path = path.TrimPath() ?? string.Empty;
 
+				if (_preferencesCache.TryGetValue(path, out var cachedTrimmed))
+					return cachedTrimmed;
+
 				return SafetyExtensions.IgnoreExceptions(() =>
 				{
 					if (path.StartsWith("tag:", StringComparison.Ordinal))
 						return GetLayoutPreferencesFromDatabase("Home", null);
 
+					var prefNoFrn = GetLayoutPreferencesFromDatabase(path, null);
+					if (prefNoFrn is not null)
+					{
+						string localPath = path;
+						_ = Task.Run(() =>
+						{
+							var folderFRN = Win32Helper.GetFolderFRN(localPath);
+							if (folderFRN is not null)
+							{
+								var fullPref = GetLayoutPreferencesFromDatabase(localPath, folderFRN) ?? GetLayoutPreferencesFromAds(localPath, folderFRN);
+								if (fullPref is not null)
+								{
+									_preferencesCache.TryUpdate(localPath, fullPref, prefNoFrn);
+								}
+								else
+								{
+									SetLayoutPreferencesToDatabase(localPath, folderFRN, prefNoFrn);
+								}
+							}
+						});
+
+						_preferencesCache[path] = prefNoFrn;
+						return prefNoFrn;
+					}
+
 					var folderFRN = Win32Helper.GetFolderFRN(path);
 
-					return GetLayoutPreferencesFromDatabase(path, folderFRN)
-						?? GetLayoutPreferencesFromAds(path, folderFRN);
+					var resolvedPref = GetLayoutPreferencesFromDatabase(path, folderFRN)
+						?? GetLayoutPreferencesFromAds(path, folderFRN)
+						?? GetDefaultLayoutPreferences(path);
+
+					if (resolvedPref is not null)
+					{
+						_preferencesCache[path] = resolvedPref;
+					}
+
+					return resolvedPref;
 				}, App.Logger)
 					?? GetDefaultLayoutPreferences(path);
 			}
 
-			return new LayoutPreferencesItem();
+			var defaultGlobalPref = new LayoutPreferencesItem();
+			_preferencesCache[path] = defaultGlobalPref;
+			return defaultGlobalPref;
+		}
+
+		public static void PreFetchSettingsForPath(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+				return;
+
+			_ = Task.Run(() =>
+			{
+				try
+				{
+					_ = GetLayoutPreferencesForPath(path);
+				}
+				catch { }
+			});
 		}
 
 		private static LayoutPreferencesItem? GetLayoutPreferencesFromAds(string path, ulong? frn)

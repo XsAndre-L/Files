@@ -14,12 +14,12 @@
     IgnorableNamespaces="mp rescap desktop desktop4 desktop6 uap uap5">
 
     <Identity
-        Name="FilesDev"
+        Name="XplorerDev"
         Publisher="CN=Files"
-        Version="4.1.1.0" />
+        Version="4.3.0.0" />
 
     <Properties>
-        <DisplayName>Files - Dev</DisplayName>
+        <DisplayName>Xplorer</DisplayName>
         <PublisherDisplayName>Yair A</PublisherDisplayName>
         <Logo>Assets\AppTiles\Dev\StoreLogo.png</Logo>
         <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
@@ -89,7 +89,7 @@
             desktop4:SupportsMultipleInstances="true">
 
             <uap:VisualElements
-                DisplayName="Files - Dev"
+                DisplayName="Xplorer"
                 Description="Organize your files and folders easily. Robust multitasking experiences, helpful tags, and deep integrations add to an intuitive design, made by the community."
                 Square150x150Logo="Assets\AppTiles\Dev\Square150x150Logo.png"
                 Square44x44Logo="Assets\AppTiles\Dev\Square44x44Logo.png"
@@ -99,7 +99,7 @@
                     Wide310x150Logo="Assets\AppTiles\Dev\Wide310x150Logo.png"
                     Square71x71Logo="Assets\AppTiles\Dev\Small71x71Logo.png"
                     Square310x310Logo="Assets\AppTiles\Dev\Large310x310Logo.png"
-                    ShortName="Files - Dev">
+                    ShortName="Xplorer">
                     <uap:ShowNameOnTiles>
                         <uap:ShowOn Tile="square150x150Logo" />
                         <uap:ShowOn Tile="wide310x150Logo" />

@@ -1644,6 +1644,12 @@ namespace Files.App.ViewModels
 			HasNoWatcher = false;
 			ItemLoadStatusChanged?.Invoke(this, new ItemLoadStatusChangedEventArgs() { Status = ItemLoadStatusChangedEventArgs.ItemLoadStatus.Starting });
 
+			// Drop all currently waiting instances immediately so they exit without acquiring the semaphore
+			var prevSemaphoreCts = semaphoreCTS;
+			semaphoreCTS = new CancellationTokenSource();
+			prevSemaphoreCts.Cancel();
+			prevSemaphoreCts.Dispose();
+
 			CancelLoadAndClearFiles();
 
 			if (string.IsNullOrEmpty(path))
@@ -1663,10 +1669,6 @@ namespace Files.App.ViewModels
 
 			try
 			{
-				// Drop all the other waiting instances
-				semaphoreCTS.Cancel();
-				semaphoreCTS = new CancellationTokenSource();
-
 				IsLoadingItems = true;
 
 				filesAndFolders.Clear();
@@ -2951,6 +2953,8 @@ namespace Files.App.ViewModels
 			folderSizeProvider.SizeChanged -= FolderSizeProvider_SizeChanged;
 			folderSettings.LayoutModeChangeRequested -= LayoutModeChangeRequested;
 			AppModel.PropertyChanged -= AppModel_PropertyChanged;
+			semaphoreCTS.Cancel();
+			semaphoreCTS.Dispose();
 		}
 
 		private void AppModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

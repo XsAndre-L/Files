@@ -947,20 +947,39 @@ namespace Files.App.Helpers
 			return result;
 		}
 
+		private static readonly ConcurrentDictionary<string, ulong?> _folderFrnCache = new(StringComparer.OrdinalIgnoreCase);
+
 		// https://www.pinvoke.net/default.aspx/kernel32/GetFileInformationByHandleEx.html
 		public static ulong? GetFolderFRN(string folderPath)
 		{
+			if (string.IsNullOrWhiteSpace(folderPath))
+				return null;
+
+			if (_folderFrnCache.TryGetValue(folderPath, out var cached))
+				return cached;
+
 			using var handle = OpenFileForRead(folderPath);
 			if (!handle.IsInvalid)
 			{
 				var fileStruct = new Win32PInvoke.FILE_ID_BOTH_DIR_INFO();
 				if (Win32PInvoke.GetFileInformationByHandleEx(handle.DangerousGetHandle(), Win32PInvoke.FILE_INFO_BY_HANDLE_CLASS.FileIdBothDirectoryInfo, out fileStruct, (uint)Marshal.SizeOf(fileStruct)))
 				{
-					return (ulong)fileStruct.FileId;
+					var frn = (ulong)fileStruct.FileId;
+					_folderFrnCache[folderPath] = frn;
+					return frn;
 				}
 			}
-			return null;
+			return null; // NOT cached — allows retry on future calls
 		}
+
+		public static Task<ulong?> GetFolderFRNAsync(string folderPath)
+		{
+			if (string.IsNullOrWhiteSpace(folderPath))
+				return Task.FromResult<ulong?>(null);
+
+			return Task.Run(() => GetFolderFRN(folderPath));
+		}
+
 
 		public static ulong? GetFileFRN(string filePath)
 		{

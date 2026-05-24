@@ -274,6 +274,7 @@ namespace Files.App
 				"FilesPreview", // sideload preview
 				"49306atecsolution.FilesPreview", // store preview
 				"FilesDev", // dev
+				"XplorerDev", // dev (custom)
 			};
 		}
 
